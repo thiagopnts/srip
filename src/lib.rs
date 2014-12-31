@@ -1,4 +1,5 @@
 
+#[deriving(Clone)]
 struct Value;
 
 // constructor functions
@@ -131,15 +132,54 @@ fn ctor_null() -> Option<Value> {
     None
 }
 
-fn dtor_null(_: Value) { }
+fn dtor_null(x: Value) -> Value { x }
 
 // this all should be generated through macro_rules!
 fn string(string: &str) -> Parser {
     let mut p = Parser::new();
     p.parser_type = ParserType::String;
     p.data = Some(box ParserData::String(string.to_string()));
-    // TODO
+    // TODO: missing expectf(p, "\"%s\"", s); call
+    // before return
     p
+}
+
+fn strfold(n: int, xs: Vec<Value>) -> Value {
+    println!("strfold unimplemented");
+    Value
+}
+
+fn free(x: Value) -> Value {
+    x
+}
+
+fn whitespace() -> Parser {
+    expect(oneof(" \\f\\n\\r\\t\\v"), "whitespace")
+}
+
+fn whitespaces() -> Parser {
+    expect(many(strfold, whitespace()), "spaces")
+}
+
+fn first(n: int, xs: Vec<Value>) -> Value {
+    xs[0].clone()
+}
+
+fn blank() -> Parser {
+    expect(apply(whitespaces(), free), "whitespace")
+}
+
+fn oneof(s: &str) -> Parser {
+    let mut p = Parser::new();
+    p.parser_type = ParserType::OneOf;
+    p.data = Some(box ParserData::String(s.to_string()));
+    // TODO: missing expectf(p, "\"%s\"", s); call
+    // before return
+    p
+}
+
+fn tok(a: Parser) -> Parser {
+    and(first, vec!(a, blank()), vec!())
 }
 
 fn expect(a: Parser, expected: &str) -> Parser {
@@ -230,13 +270,51 @@ fn and(f: Fold, parsers: Vec<Parser>, dtors: Vec<dtor>) -> Parser {
     p
 }
 
-//fn sym(string: &str) -> Parser {
-//    // TODO
-//}
+fn sym(s: &str) -> Parser {
+    tok(string(s))
+}
 
 #[test]
 fn maybe_test() {
     let p = Parser::new();
     let a = maybe(p);
     assert!(a.parser_type == ParserType::Maybe);
+}
+
+#[test]
+fn or_with_sym_test() {
+    let adj = or(vec!(sym("wow"), sym("many"), sym("so"), sym("such")));
+
+    assert!(adj.parser_type == ParserType::Or);
+    match adj.data {
+        Some(data) => match *data {
+            ParserData::Or(n, parsers) => {
+                assert!(n == 4);
+                assert!(parsers.len() == 4);
+            },
+            _ => assert!(false),
+        },
+        _ => assert!(false)
+    }
+}
+
+#[test]
+fn and_with_sym_test() {
+    let adj = or(vec!(sym("wow"), sym("many"), sym("so"), sym("such")));
+    let noun = or(vec!(sym("lisp"), sym("language"), sym("book"), sym("build"), sym("c")));
+    let phrase = and(strfold, vec!(adj, noun), vec!());
+
+    assert!(phrase.parser_type == ParserType::And);
+
+    match phrase.data {
+        Some(data) => match *data {
+            ParserData::And(n, _, parsers, _) => {
+                assert!(n == 2);
+                assert!(parsers.len() == 2);
+                assert!(parsers[0].parser_type == ParserType::Or);
+            },
+            _ => assert!(false),
+        },
+        _ => assert!(false),
+    }
 }
