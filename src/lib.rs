@@ -1,6 +1,36 @@
+#![feature(globs)]
+
+use std::io::File;
 
 #[deriving(Clone)]
 struct Value;
+
+struct InputFile {
+    filename: &'static str,
+    state: State,
+    file: File,
+    backtrack: int,
+    last: char,
+}
+
+impl InputFile {
+    pub fn new(filename: &'static str, file: File) -> InputFile {
+        InputFile {
+            filename: filename,
+            state: State::new(),
+            file: file,
+            backtrack: 1,
+            last: '\0',
+        }
+    }
+    fn terminated(self) -> bool {
+        self.file.eof()
+    }
+    fn getc(&mut self) -> char {
+        let byte = try!(self.file.read_byte());
+        byte as char;
+    }
+}
 
 // constructor functions
 type ctor = fn() -> Option<Value>;
@@ -15,7 +45,7 @@ type ApplyFunction = fn(Value) -> Value;
 // the second arg is void* on the original lib
 type ApplyFunctionTo = fn(Value, Value) -> Value;
 
-#[deriving(Show, PartialEq)]
+#[deriving(Show, Clone, PartialEq)]
 enum ParserType {
     Undefined,
     Pass,
@@ -52,6 +82,7 @@ enum ParsingResult {
     Output(Value),
 }
 
+#[deriving(Clone)]
 enum ParserData {
     Fail(String),
     Lift(ctor, Value),
@@ -81,15 +112,47 @@ struct State {
     col: int,
 }
 
+impl State {
+    pub fn new() -> State {
+        State {
+            pos: 0,
+            row: 0,
+            col: 0,
+        }
+    }
+
+    pub fn invalid() -> State {
+        State {
+            pos: -1,
+            row: -1,
+            col: -1
+        }
+    }
+}
+
 struct ParsingError {
     state: State,
     expected_num: int,
-    filename: String,
-    failure: String,
+    filename: &'static str,
+    failure: &'static str,
     expected: Vec<String>,
     received: char,
 }
 
+impl ParsingError {
+    pub fn new(filename: &'static str, s: State, failure: &'static str) -> ParsingError {
+        ParsingError {
+            filename: filename,
+            state: s,
+            expected_num: 0,
+            expected: vec!(),
+            failure: failure,
+            received: ' ',
+        }
+    }
+}
+
+#[deriving(Clone)]
 struct Parser {
     retained: int,
     name: Option<String>,
@@ -117,15 +180,42 @@ struct AST {
 }
 
 struct Stack {
-    parsers_num: uint,
-    parsers_slots: uint,
     parsers: Vec<Parser>,
     states: Vec<int>,
-    results_num: uint,
-    results_slots: int,
     results: Vec<ParsingResult>,
     returns: Vec<int>,
     err: ParsingError,
+}
+
+impl Stack {
+    fn new(filename: &'static str) -> Stack {
+        Stack {
+            parsers: vec!(),
+            states: vec!(),
+            results: vec!(),
+            returns: vec!(),
+            err: ParsingError::new(filename, State::invalid(), "Unknow error"),
+        }
+    }
+
+    fn push_parser(&mut self, p: Parser) {
+        self.parsers.push(p);
+        self.states.push(0);
+    }
+
+    fn pop_parser(&mut self) -> Option<Parser> {
+        self.states.pop();
+        self.parsers.pop()
+    }
+
+    fn peek_parser(self) -> (Parser, int) {
+        let size = self.parsers.len();
+        (self.parsers[size - 1].clone(), self.states[size - 1].clone())
+    }
+
+    fn is_empty(self) -> bool {
+        self.parsers.len() == 0
+    }
 }
 
 fn ctor_null() -> Option<Value> {
@@ -272,6 +362,30 @@ fn and(f: Fold, parsers: Vec<Parser>, dtors: Vec<dtor>) -> Parser {
 
 fn sym(s: &str) -> Parser {
     tok(string(s))
+}
+
+fn parse_input(i: InputFile, init: Parser, final_result: ParsingResult) -> int {
+    use ParserType::*;
+
+    let mut st = 0i;
+    let mut p = Parser::new();
+    let mut stk = Stack::new(i.filename);
+    stk.push_parser(init);
+    while !stk.is_empty() {
+        let (p, st) = stk.peek_parser();
+        match p.parser_type {
+            Any => (),
+            _ => (),
+        }
+    }
+    0
+}
+
+
+fn input_any(i: InputFile, o: char) -> int {
+    let x = i.getc();
+    if(i.terminated()) { return 0; }
+    0
 }
 
 #[test]
